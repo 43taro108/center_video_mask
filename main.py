@@ -10,35 +10,18 @@ import cv2
 import numpy as np
 import tempfile
 import os
-import subprocess
+from ultralytics import YOLO
 
-@st.cache_resource
-def install_and_load_detectron2():
-    try:
-        import detectron2
-    except ImportError:
-        st.warning("Installing Detectron2... (this may take a few minutes)")
-        subprocess.run(
-            ["pip", "install", "git+https://github.com/facebookresearch/detectron2.git"],
-            check=True
-        )
-    from detectron2.engine import DefaultPredictor
-    from detectron2.config import get_cfg
-    from detectron2 import model_zoo
-
-    cfg = get_cfg()
-    cfg.merge_from_file(model_zoo.get_config_file(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
-    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 80
-    cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-        "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
-    return DefaultPredictor(cfg)
-
-predictor = install_and_load_detectron2()
-
-st.title("Center Person Extractor (Videos up to 30 seconds)")
+st.title("Center Person Extractor using YOLOv5 (Videos up to 30 seconds)")
 st.write("Upload a video (max 30 seconds). The app will detect and extract the person closest to the center.")
+
+# Load YOLOv5 model
+@st.cache_resource
+def load_yolo_model():
+    model = YOLO('yolov5s.pt')  # Use the small version for speed
+    return model
+
+model = load_yolo_model()
 
 video_file = st.file_uploader("Upload a video file", type=["mp4", "mov", "avi"])
 
@@ -61,7 +44,6 @@ if video_file:
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cx, cy = w / 2, h / 2
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
         output_path = os.path.join(tempfile.gettempdir(), "output_masked.mp4")
         out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
 
@@ -73,25 +55,26 @@ if video_file:
             if not ret:
                 break
 
-            outputs = predictor(frame)
-            instances = outputs["instances"].to("cpu")
-            is_person = (instances.pred_classes == 0).numpy()
-            idxs = np.nonzero(is_person)[0].tolist()
+            results = model(frame)
+            boxes = results[0].boxes.xyxy.cpu().numpy()
+            classes = results[0].boxes.cls.cpu().numpy()
 
-            if len(idxs) == 0:
+            person_idxs = np.where(classes == 0)[0]  # Class 0 is person
+
+            if len(person_idxs) == 0:
                 out.write(np.zeros_like(frame))
             else:
-                if len(idxs) > 1:
-                    boxes = instances.pred_boxes.tensor.numpy()[idxs]
-                    xs = (boxes[:, 0] + boxes[:, 2]) / 2
-                    ys = (boxes[:, 1] + boxes[:, 3]) / 2
-                    ds = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2)
-                    target = idxs[int(np.argmin(ds))]
-                else:
-                    target = idxs[0]
+                centers = []
+                for idx in person_idxs:
+                    x1, y1, x2, y2 = boxes[idx]
+                    centers.append(((x1 + x2) / 2, (y1 + y2) / 2))
+                centers = np.array(centers)
+                ds = np.sqrt((centers[:,0] - cx)**2 + (centers[:,1] - cy)**2)
+                target_idx = person_idxs[np.argmin(ds)]
 
-                mask = instances.pred_masks[target].numpy().astype(np.uint8)
-                mask = cv2.dilate(mask, kernel, iterations=2)
+                x1, y1, x2, y2 = boxes[target_idx].astype(int)
+                mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+                mask[y1:y2, x1:x2] = 255
 
                 masked = cv2.bitwise_and(frame, frame, mask=mask)
                 out.write(masked)
