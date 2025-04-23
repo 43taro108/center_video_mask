@@ -14,8 +14,13 @@ import mediapipe as mp
 st.title("Center Person Extractor using MediaPipe (Videos up to 30 seconds)")
 st.write("Upload a video (max 30 seconds). The app will detect the person closest to the center and mask other areas.")
 
-# Initialize MediaPipe Pose\mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
+# Initialize MediaPipe Pose
+@st.cache_resource
+def load_pose_model():
+    mp_pose = mp.solutions.pose
+    return mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
+
+pose = load_pose_model()
 
 video_file = st.file_uploader("Upload a video file", type=["mp4", "mov", "avi"])
 
@@ -55,7 +60,6 @@ if video_file:
             mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 
             if results.pose_landmarks:
-                # Get bounding box from landmarks
                 landmarks = results.pose_landmarks.landmark
                 xs = [lm.x for lm in landmarks]
                 ys = [lm.y for lm in landmarks]
@@ -65,11 +69,6 @@ if video_file:
                 y_min = int(min(ys) * h)
                 y_max = int(max(ys) * h)
 
-                # Calculate center of the detected person
-                person_cx = (x_min + x_max) / 2
-                person_cy = (y_min + y_max) / 2
-
-                # Check if person is close to center (since only one person is detected by default)
                 mask[y_min:y_max, x_min:x_max] = 255
 
             masked = cv2.bitwise_and(frame, frame, mask=mask)
@@ -80,7 +79,6 @@ if video_file:
 
         cap.release()
         out.release()
-        pose.close()
 
         st.success("✅ Processing complete!")
         st.video(output_path)
