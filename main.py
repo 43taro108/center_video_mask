@@ -55,10 +55,17 @@ if video_file:
             if not ret:
                 break
 
-            # Convert BGR to RGB and then to PIL Image
+            # Convert BGR to RGB and save as temp file
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(rgb_frame)
-            results = model(pil_image)
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
+                pil_image.save(temp_img.name)
+                img_path = temp_img.name
+
+            results = model(img_path)
+
+            os.remove(img_path)  # Clean up temp image
 
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()
