@@ -55,7 +55,10 @@ if video_file:
             if not ret:
                 break
 
-            results = model([frame])  # Pass frame as a list
+            # Convert BGR to RGB before passing to YOLO
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = model(rgb_frame)
+
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()
 
