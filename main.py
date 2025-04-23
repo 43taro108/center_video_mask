@@ -55,7 +55,7 @@ if video_file:
             if not ret:
                 break
 
-            results = model(frame)
+            results = model([frame])  # Pass frame as a list
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()
 
