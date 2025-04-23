@@ -10,6 +10,7 @@ import numpy as np
 import tempfile
 import os
 from ultralytics import YOLO
+from PIL import Image
 
 st.title("Center Person Extractor using YOLOv5 (Videos up to 30 seconds)")
 st.write("Upload a video (max 30 seconds). The app will detect and extract the person closest to the center.")
@@ -54,9 +55,10 @@ if video_file:
             if not ret:
                 break
 
-            # Convert BGR to RGB and pass as list
+            # Convert BGR to RGB and then to PIL Image
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = model([rgb_frame])
+            pil_image = Image.fromarray(rgb_frame)
+            results = model(pil_image)
 
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()
