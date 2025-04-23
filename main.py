@@ -4,7 +4,6 @@ Created on Thu Apr 24 01:47:29 2025
 
 @author: ktrpt
 """
-
 import streamlit as st
 import cv2
 import numpy as np
@@ -55,9 +54,9 @@ if video_file:
             if not ret:
                 break
 
-            # Convert BGR to RGB before passing to YOLO
+            # Convert BGR to RGB and pass as list
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = model(rgb_frame)
+            results = model([rgb_frame])
 
             boxes = results[0].boxes.xyxy.cpu().numpy()
             classes = results[0].boxes.cls.cpu().numpy()
