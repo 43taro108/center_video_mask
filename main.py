@@ -69,7 +69,16 @@ if video_file:
                 y_min = int(min(ys) * h)
                 y_max = int(max(ys) * h)
 
-                mask[y_min:y_max, x_min:x_max] = 255
+                # Expand the bounding box by 10%
+                padding_x = int((x_max - x_min) * 0.1)
+                padding_y = int((y_max - y_min) * 0.1)
+
+                x_min_exp = max(0, x_min - padding_x)
+                x_max_exp = min(w, x_max + padding_x)
+                y_min_exp = max(0, y_min - padding_y)
+                y_max_exp = min(h, y_max + padding_y)
+
+                mask[y_min_exp:y_max_exp, x_min_exp:x_max_exp] = 255
 
             masked = cv2.bitwise_and(frame, frame, mask=mask)
             out.write(masked)
@@ -81,7 +90,6 @@ if video_file:
         out.release()
 
         st.success("✅ Processing complete!")
-        st.video(output_path)
 
         with open(output_path, "rb") as f:
             st.download_button("Download processed video", f, file_name="center_person_masked.mp4")
