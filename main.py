@@ -9,19 +9,13 @@ import cv2
 import numpy as np
 import tempfile
 import os
-from ultralytics import YOLO
-from PIL import Image
+import mediapipe as mp
 
-st.title("Center Person Extractor using YOLOv5 (Videos up to 30 seconds)")
-st.write("Upload a video (max 30 seconds). The app will detect and extract the person closest to the center.")
+st.title("Center Person Extractor using MediaPipe (Videos up to 30 seconds)")
+st.write("Upload a video (max 30 seconds). The app will detect the person closest to the center and mask other areas.")
 
-# Load YOLOv5 model
-@st.cache_resource
-def load_yolo_model():
-    model = YOLO('yolov5s.pt')  # Use the small version for speed
-    return model
-
-model = load_yolo_model()
+# Initialize MediaPipe Pose\mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
 
 video_file = st.file_uploader("Upload a video file", type=["mp4", "mov", "avi"])
 
@@ -55,46 +49,38 @@ if video_file:
             if not ret:
                 break
 
-            # Convert BGR to RGB and save as temp file
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_image = Image.fromarray(rgb_frame)
+            results = pose.process(rgb_frame)
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
-                pil_image.save(temp_img.name)
-                img_path = temp_img.name
+            mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 
-            results = model(img_path)
+            if results.pose_landmarks:
+                # Get bounding box from landmarks
+                landmarks = results.pose_landmarks.landmark
+                xs = [lm.x for lm in landmarks]
+                ys = [lm.y for lm in landmarks]
 
-            os.remove(img_path)  # Clean up temp image
+                x_min = int(min(xs) * w)
+                x_max = int(max(xs) * w)
+                y_min = int(min(ys) * h)
+                y_max = int(max(ys) * h)
 
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            classes = results[0].boxes.cls.cpu().numpy()
+                # Calculate center of the detected person
+                person_cx = (x_min + x_max) / 2
+                person_cy = (y_min + y_max) / 2
 
-            person_idxs = np.where(classes == 0)[0]  # Class 0 is person
+                # Check if person is close to center (since only one person is detected by default)
+                mask[y_min:y_max, x_min:x_max] = 255
 
-            if len(person_idxs) == 0:
-                out.write(np.zeros_like(frame))
-            else:
-                centers = []
-                for idx in person_idxs:
-                    x1, y1, x2, y2 = boxes[idx]
-                    centers.append(((x1 + x2) / 2, (y1 + y2) / 2))
-                centers = np.array(centers)
-                ds = np.sqrt((centers[:,0] - cx)**2 + (centers[:,1] - cy)**2)
-                target_idx = person_idxs[np.argmin(ds)]
-
-                x1, y1, x2, y2 = boxes[target_idx].astype(int)
-                mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-                mask[y1:y2, x1:x2] = 255
-
-                masked = cv2.bitwise_and(frame, frame, mask=mask)
-                out.write(masked)
+            masked = cv2.bitwise_and(frame, frame, mask=mask)
+            out.write(masked)
 
             frame_idx += 1
             progress_bar.progress(frame_idx / total_frames)
 
         cap.release()
         out.release()
+        pose.close()
 
         st.success("✅ Processing complete!")
         st.video(output_path)
