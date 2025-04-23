@@ -10,13 +10,22 @@ import cv2
 import numpy as np
 import tempfile
 import os
-
-from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-from detectron2 import model_zoo
+import subprocess
 
 @st.cache_resource
-def load_predictor():
+def install_and_load_detectron2():
+    try:
+        import detectron2
+    except ImportError:
+        st.warning("Installing Detectron2... (this may take a few minutes)")
+        subprocess.run(
+            ["pip", "install", "git+https://github.com/facebookresearch/detectron2.git"],
+            check=True
+        )
+    from detectron2.engine import DefaultPredictor
+    from detectron2.config import get_cfg
+    from detectron2 import model_zoo
+
     cfg = get_cfg()
     cfg.merge_from_file(model_zoo.get_config_file(
         "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
@@ -26,20 +35,18 @@ def load_predictor():
         "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml")
     return DefaultPredictor(cfg)
 
-predictor = load_predictor()
+predictor = install_and_load_detectron2()
 
-st.title("Center Person Extractor (Only videos under 30 seconds)")
+st.title("Center Person Extractor (Videos up to 30 seconds)")
+st.write("Upload a video (max 30 seconds). The app will detect and extract the person closest to the center.")
 
-st.write("⚠️ Please upload a video **30 seconds or shorter**.")
-
-video_file = st.file_uploader("Upload your video", type=["mp4", "mov", "avi"])
+video_file = st.file_uploader("Upload a video file", type=["mp4", "mov", "avi"])
 
 if video_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
         temp_video.write(video_file.read())
         video_path = temp_video.name
 
-    # Check video duration
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -95,8 +102,8 @@ if video_file:
         cap.release()
         out.release()
 
-        st.success("Processing complete!")
-
+        st.success("✅ Processing complete!")
         st.video(output_path)
+
         with open(output_path, "rb") as f:
             st.download_button("Download processed video", f, file_name="center_person_masked.mp4")
