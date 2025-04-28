@@ -1,4 +1,3 @@
-libgl1
 streamlit
 opencv-python-headless
 numpy
